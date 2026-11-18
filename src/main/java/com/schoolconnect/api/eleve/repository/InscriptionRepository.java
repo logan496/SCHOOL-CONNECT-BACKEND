@@ -15,6 +15,8 @@ public interface InscriptionRepository extends JpaRepository<Inscription, UUID> 
 
     List<Inscription> findByClasseIdAndAnneeScolaireIdAndStatut(UUID classeId, UUID anneeScolaireId, StatutInscription statut);
 
+    Optional<Inscription> findFirstByEleveIdAndStatutOrderByDateInscriptionDesc(UUID eleveId, StatutInscription statut);
+
     boolean existsByEtablissementIdAndMatricule(UUID etablissementId, String matricule);
 
     boolean existsByEtablissementIdAndEleveId(UUID etablissementId, UUID eleveId);

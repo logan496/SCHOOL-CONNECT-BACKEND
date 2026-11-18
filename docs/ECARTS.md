@@ -45,9 +45,9 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 | CU-PAR-07 | Consulter les notes | M | ✅ `NoteEleveController.listPourParent` (`GET /mes-enfants/{id}/notes`), par matière et par période, avec moyenne calculée |
 | CU-PAR-08 | Consulter/télécharger bulletins | M | ❌ |
 | CU-PAR-09 | Consulter emploi du temps | S | ❌ |
-| CU-PAR-10 | Consulter situation financière | M | ❌ |
-| CU-PAR-11 | Payer en ligne / déclarer un paiement | M | ❌ |
-| CU-PAR-12 | Télécharger reçus/historique | M | ❌ |
+| CU-PAR-10 | Consulter situation financière | M | ✅ `SituationFinanciereParentController` (`GET /mes-enfants/{id}/situation-financiere`) : dû, payé, solde |
+| CU-PAR-11 | Payer en ligne / déclarer un paiement | M | ❌ (paiement en ligne hors MVP par choix du cahier des charges ; « déclarer un paiement » — un parent signale lui-même un paiement effectué — non implémenté, seul l'économat enregistre) |
+| CU-PAR-12 | Télécharger reçus/historique | M | 🟡 historique des paiements inclus dans la situation financière (JSON) ; pas de téléchargement PDF du reçu |
 | CU-PAR-13 | Recevoir notifications | M | ❌ |
 | CU-PAR-14 | Consulter annonces/convocations | M | ❌ |
 | CU-PAR-15 | Échanger avec l'établissement | C | ❌ (hors MVP) |
@@ -60,10 +60,10 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 | CU-DIR-01 | Tableau de bord | M | ❌ |
 | CU-DIR-02 | Paramétrer année scolaire/périodes/classes | M | ✅ année scolaire, classes, matières et périodes exposées (`AnneeScolaireController`, `ClasseController`, `MatiereController`, `PeriodeController`), y compris ouverture/fermeture de la saisie des notes |
 | CU-DIR-03 | Gérer utilisateurs et rôles | M | 🟡 `role_utilisateur` en base + autorités JWT, aucun endpoint d'attribution |
-| CU-DIR-04 | Grille tarifaire et échéanciers | M | ❌ |
+| CU-DIR-04 | Grille tarifaire et échéanciers | M | ✅ `FraisScolaireController` — une ligne par niveau/libellé/montant/échéance |
 | CU-DIR-05 | Valider résultats / publier bulletins | M | ❌ |
 | CU-DIR-06 | Assiduité enseignants/personnel | M | ❌ |
-| CU-DIR-07 | Rapports financiers/impayés | M | ❌ |
+| CU-DIR-07 | Rapports financiers/impayés | M | ✅ `RapportFinancierController.impayes` (solde agrégé, pas d'échéance individuelle) |
 | CU-DIR-08 | Publier annonces | S | ❌ |
 | CU-DIR-09 | Exports statistiques | S | ❌ |
 | CU-DIR-10 | Journal d'audit | S | ❌ (pas de table d'audit) |
@@ -104,7 +104,18 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 | CU-ENS-05 | Corriger une note | M | ✅ `EvaluationController.corriger`, limité à la période ouverte (`periode.saisie_ouverte`) |
 | CU-ENS-06 à 10 | Appréciations, statistiques, cahier de textes, messagerie | S/C | ❌ |
 
-### 2.6 Comptable/Économat — ❌ entièrement absent (CU-ECO-01 à 09, dont M : 01-03, 06-08)
+### 2.6 Comptable/Économat
+| ID | Cas d'utilisation | Prio | État |
+|---|---|---|---|
+| CU-ECO-01 | Consulter la situation financière d'un élève | M | ✅ `PaiementController.situation` |
+| CU-ECO-02 | Enregistrer un paiement (espèces, Mobile Money, virement) | M | ✅ `PaiementController.enregistrer` (+ chèque) |
+| CU-ECO-03 | Émettre un reçu numérique | M | 🟡 numéro de reçu généré et consultable (JSON), pas d'impression/envoi PDF |
+| CU-ECO-04 | Remises, bourses, échéanciers personnalisés | S | ❌ (grille tarifaire uniforme par niveau) |
+| CU-ECO-05 | Rapprocher les paiements en ligne avec la comptabilité | S | ❌ (hors sujet, pas de paiement en ligne) |
+| CU-ECO-06 | Suivre les impayés et envoyer des relances | M | 🟡 `RapportFinancierController.impayes` liste les soldes positifs ; pas d'envoi de relance (notifications) |
+| CU-ECO-07 | Annuler ou corriger un paiement (justification + validation) | M | ✅ `PaiementController.annuler`, motif obligatoire, tracé (`annule_par`/`annule_le`) |
+| CU-ECO-08 | Éditer les rapports de caisse journaliers/périodiques | M | 🟡 `RapportFinancierController.rapportCaisse` journalier uniquement, pas de rapport périodique agrégé |
+| CU-ECO-09 | Exporter les données financières | S | ❌ |
 
 ### 2.7 Super-admin
 | ID | Cas d'utilisation | Prio | État |
@@ -163,9 +174,11 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 4. ~~**Notes** (CU-ENS-02/04/05, CU-PAR-07)~~ — fait, voir section 8. Reste : **bulletins**
    (CU-DIR-05 validation/publication, CU-PAR-08 PDF) — nécessite moyenne générale + rang par
    classe (pas seulement par matière) et génération de PDF, volontairement laissé de côté.
-5. **Paiements** (CU-ECO-01/02/03/06/07/08, CU-PAR-10/11/12, CU-DIR-04/07).
+5. ~~**Paiements** (CU-ECO-01/02/03/06/07/08, CU-PAR-10/12, CU-DIR-04/07)~~ — fait, voir
+   section 9. Pas de paiement en ligne (choix du cahier des charges), pas de reçu PDF, pas de
+   relances automatiques (dépend du module notifications).
 6. **Notifications système** (CU-SYS-01/03) — transverse au module 5 et à l'absence (module 3).
-7. **Tableaux de bord direction** (CU-DIR-01) une fois les modules 5-6 posés, et **bulletins**
+7. **Tableaux de bord direction** (CU-DIR-01) une fois le module 6 posé, et **bulletins**
    (voir point 4).
 
 Restent aussi en attente, non bloquants pour la suite ci-dessus : CU-SEC-02 (réinscription),
@@ -285,3 +298,41 @@ Nouveau package `note` (architecture en couches, comme `presence`) :
 
 Non couvert (voir section 5) : moyenne générale tous matières confondues, rang dans la classe,
 validation/publication des bulletins (CU-DIR-05), export PDF du bulletin (CU-PAR-08).
+
+## 9. Module paiements (CU-DIR-04, CU-ECO-01/02/03/06/07/08, CU-PAR-10/12)
+
+Pas de passerelle de paiement en ligne (Mobile Money direct) : conformément au cahier des
+charges, c'est prévu pour une version ultérieure. Ce lot couvre uniquement
+**l'enregistrement** de paiements déjà effectués par ailleurs.
+
+Nouveau package `paiement` (architecture en couches, comme `presence` et `note`) :
+
+- Migration `V5__paiements.sql` : tables `frais_scolaire` (grille tarifaire) et `paiement`.
+- `FraisScolaireController` (CU-DIR-04) : une ligne de grille tarifaire = niveau + libellé +
+  montant + date d'échéance, pour une année scolaire. Pas d'échéancier personnalisé par élève
+  (CU-ECO-04, S) : tous les élèves d'un même niveau ont les mêmes frais.
+- `PaiementService.enregistrerPaiement` (CU-ECO-02) : espèces, Mobile Money (déclaré, pas
+  prélevé), virement ou chèque. Génère un numéro de reçu unique (CU-ECO-03) ; pas de PDF
+  imprimable, le reçu reste consultable en JSON via la situation financière.
+- `PaiementService.annulerPaiement` (CU-ECO-07) : motif obligatoire, pas de suppression —
+  passe le paiement en statut `ANNULE` et trace qui/quand (`annule_par`/`annule_le`).
+- `PaiementService.calculerSituation` (CU-ECO-01, CU-PAR-10/12) : calcule à la volée
+  `totalDu` (somme des `frais_scolaire` du niveau de la classe courante de l'élève),
+  `totalPaye` (somme des paiements `VALIDE`) et `solde` ; pas de table d'échéances par élève
+  (pas de snapshot à l'inscription), donc un changement de grille tarifaire en cours d'année
+  affecte rétroactivement le montant dû affiché — acceptable pour le MVP, à corriger si cela
+  devient un problème réel (snapshotter les frais à l'inscription plutôt que les recalculer).
+- `RapportFinancierController.impayes` (CU-ECO-06, CU-DIR-07) : élèves à solde positif pour
+  l'année courante, triés par solde décroissant. Pas de détection par échéance individuelle en
+  retard (juste le solde agrégé), et pas d'envoi de relance (dépend du module notifications).
+- `RapportFinancierController.rapportCaisse` (CU-ECO-08) : total encaissé un jour donné, par
+  mode de paiement. Pas de rapport périodique (hebdo/mensuel) agrégé — à construire en
+  répétant l'appel par date si besoin, ou en ajoutant un endpoint dédié plus tard.
+- Autorisation : `ECONOMAT`/`DIRECTION`/`SUPER_ADMIN` pour enregistrer/annuler/consulter les
+  rapports ; lecture de la situation financière d'un élève ouverte à tout rôle d'établissement
+  (`ETAB:`) ; côté parent, même pattern que présences/notes (lien `parent_eleve` validé +
+  `peutConsulter` — `peutPayer` n'est pas encore utilisé puisqu'il n'y a pas de paiement en
+  ligne à autoriser).
+
+Non couvert (voir section 5) : remises/bourses (CU-ECO-04), rapprochement paiements en ligne
+(CU-ECO-05, sans objet), export de données (CU-ECO-09), reçu PDF, relances automatiques.
