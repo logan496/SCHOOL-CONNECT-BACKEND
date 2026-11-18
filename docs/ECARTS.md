@@ -1,0 +1,177 @@
+# Analyse des écarts — projet actuel vs cahier des charges / cas d'utilisation
+
+Comparaison entre le code présent dans ce dépôt (backend Spring Boot) et les deux documents
+de référence du groupe 5 (UCAC-ICAM) :
+- `CAHIER_DE_CHARGE_SCHOOL_CONNECT.pdf`
+- `cas-utilisation-smart-realization.pdf`
+
+État initial : 18/11/2026. Mis à jour le 18/11/2026 après implémentation du module
+« année scolaire / classes / matières / secrétariat » (voir section 6).
+
+## 1. Vue d'ensemble
+
+Le projet actuel est un squelette backend qui couvre uniquement le **socle identité /
+établissement**. Aucun module pédagogique, financier ou de communication n'est encore
+implémenté. Sur les 8 acteurs listés dans le document de cas d'utilisation, seuls des
+fragments des acteurs **Parent/Tuteur**, **Secrétariat**, **Direction** et **Super-admin**
+existent, et uniquement côté inscription/authentification/paramétrage établissement.
+
+| Domaine du cahier des charges (MVP) | État |
+|---|---|
+| Paramétrage établissement (année scolaire, périodes, classes, matières) | **Partiel** — établissement, année scolaire, période en base ; classes/matières absentes |
+| Gestion des élèves (inscription, réinscription, dossier, affectation classe) | **Partiel** — schéma SQL `eleve`/`inscription` présent, aucun service/contrôleur |
+| Gestion du personnel enseignant et administratif | **Absent** — seul `role_utilisateur` existe (RBAC générique) |
+| Présences et absences (élèves et personnel) | **Absent** |
+| Notes, moyennes, rangs, bulletins PDF | **Absent** |
+| Paiements, grille tarifaire, reçus, impayés | **Absent** |
+| Notifications aux parents (push/SMS/email) | **Absent** |
+| Espaces dédiés par profil | **Partiel** — RBAC (rôles + portée établissement) en place dans le JWT, pas d'espaces/API par profil |
+| Tableaux de bord et exports | **Absent** |
+
+## 2. Couverture détaillée par cas d'utilisation
+
+Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) · ❌ absent
+
+### 2.1 Parent/Tuteur
+| ID | Cas d'utilisation | Prio | État |
+|---|---|---|---|
+| CU-PAR-01 | Créer un compte / se connecter | M | ✅ `AuthController` (register/login, téléphone ou email, JWT) |
+| CU-PAR-02 | Lier un enfant via code/invitation | M | 🟡 table `parent_eleve` en base, aucun endpoint |
+| CU-PAR-03 | Basculer entre enfants/établissements, vue consolidée | M | ❌ |
+| CU-PAR-04 | Consulter la fiche enfant | M | ❌ |
+| CU-PAR-05 | Consulter présences/absences/retards | M | ❌ (pas de module présence) |
+| CU-PAR-06 | Justifier une absence | S | ❌ |
+| CU-PAR-07 | Consulter les notes | M | ❌ (pas de module notes) |
+| CU-PAR-08 | Consulter/télécharger bulletins | M | ❌ |
+| CU-PAR-09 | Consulter emploi du temps | S | ❌ |
+| CU-PAR-10 | Consulter situation financière | M | ❌ |
+| CU-PAR-11 | Payer en ligne / déclarer un paiement | M | ❌ |
+| CU-PAR-12 | Télécharger reçus/historique | M | ❌ |
+| CU-PAR-13 | Recevoir notifications | M | ❌ |
+| CU-PAR-14 | Consulter annonces/convocations | M | ❌ |
+| CU-PAR-15 | Échanger avec l'établissement | C | ❌ (hors MVP) |
+| CU-PAR-16 | Gérer profil/préférences notif | S | 🟡 `langue` sur `Utilisateur`, pas de préférences notif |
+| CU-PAR-17 | Se dissocier d'un enfant / correction | S | ❌ |
+
+### 2.2 Direction
+| ID | Cas d'utilisation | Prio | État |
+|---|---|---|---|
+| CU-DIR-01 | Tableau de bord | M | ❌ |
+| CU-DIR-02 | Paramétrer année scolaire/périodes/classes | M | 🟡 année scolaire et classes exposées (`AnneeScolaireController`, `ClasseController`), matières aussi (`MatiereController`) ; `periode` (séquence/trimestre) toujours sans service/contrôleur |
+| CU-DIR-03 | Gérer utilisateurs et rôles | M | 🟡 `role_utilisateur` en base + autorités JWT, aucun endpoint d'attribution |
+| CU-DIR-04 | Grille tarifaire et échéanciers | M | ❌ |
+| CU-DIR-05 | Valider résultats / publier bulletins | M | ❌ |
+| CU-DIR-06 | Assiduité enseignants/personnel | M | ❌ |
+| CU-DIR-07 | Rapports financiers/impayés | M | ❌ |
+| CU-DIR-08 | Publier annonces | S | ❌ |
+| CU-DIR-09 | Exports statistiques | S | ❌ |
+| CU-DIR-10 | Journal d'audit | S | ❌ (pas de table d'audit) |
+
+### 2.3 Secrétariat/Scolarité
+| ID | Cas d'utilisation | Prio | État |
+|---|---|---|---|
+| CU-SEC-01 | Inscrire un nouvel élève | M | ✅ `EleveController.inscrire` (`POST /etablissements/{id}/eleves`) |
+| CU-SEC-02 | Réinscrire un élève | M | ❌ (pas de distinction par rapport à une nouvelle inscription) |
+| CU-SEC-03 | Affecter/transférer en classe | M | ✅ `EleveController.affecterClasse` (`PATCH .../eleves/{id}/classe`), basé sur l'année scolaire courante |
+| CU-SEC-04 | Enregistrer tuteurs + code de liaison | M | ✅ `EleveController.enregistrerTuteur` — lie directement si le tuteur a déjà un compte, sinon génère un code de liaison à 8 caractères (valable 30 jours) |
+| CU-SEC-05 | Valider/rejeter liaison parent-enfant | M | ✅ `EleveController.validerLiaison` / `rejeterLiaison`, limité aux demandes `EN_ATTENTE` |
+| CU-SEC-06 | Corriger dossier avec historique | M | ❌ (pas de table d'historique) |
+| CU-SEC-07 | Import en masse Excel/CSV | S | ❌ |
+| CU-SEC-08 | Générer documents (certificat, carte) | S | ❌ |
+| CU-SEC-09 | Gérer dossiers du personnel | M | ❌ |
+| CU-SEC-10 | Archiver dossier élève sorti | S | 🟡 `inscription.statut = SORTI` possible en base, pas de flux |
+
+### 2.4 Surveillant général — ❌ entièrement absent (CU-SUR-01 à 08, dont M : 01-05)
+
+### 2.5 Enseignant — ❌ entièrement absent (CU-ENS-01 à 10, dont M : 01-05)
+
+### 2.6 Comptable/Économat — ❌ entièrement absent (CU-ECO-01 à 09, dont M : 01-03, 06-08)
+
+### 2.7 Super-admin
+| ID | Cas d'utilisation | Prio | État |
+|---|---|---|---|
+| CU-SAD-01 | Créer/configurer un établissement | M | ✅ `EtablissementController.create` (`@PreAuthorize("hasAuthority('SUPER_ADMIN')")`) |
+| CU-SAD-02 | Créer le premier admin de l'établissement | M | 🟡 `BootstrapAdminRunner` ne crée que le **super-admin global** via variables d'env ; aucun flux pour créer le premier admin **d'un établissement donné** |
+| CU-SAD-03 | Abonnements, activation/suspension | S | 🟡 `etablissement.statut` (ACTIF/SUSPENDU/ARCHIVE) existe en base, pas d'endpoint |
+| CU-SAD-04 | Supervision usage/santé plateforme | S | ❌ (actuator/health exposé mais pas de supervision applicative) |
+| CU-SAD-05 | Support tracé | S | ❌ |
+| CU-SAD-06 | Comptes en doublon | S | ❌ |
+
+### 2.8 Acteur système — ❌ entièrement absent (notifications, calculs auto, rappels, sauvegarde/audit)
+
+## 3. Écarts par rapport au cahier des charges (hors cas d'utilisation)
+
+- **Multi-tenant** : le principe (`etablissement_id` scopé, `SUPER_ADMIN` sans établissement)
+  est posé dans le schéma et dans les autorités JWT (`ETAB:<id>`), mais rien ne vérifie encore
+  l'isolation des données côté élèves/notes/paiements puisque ces modules n'existent pas.
+- **RBAC** : conforme à l'esprit du glossaire (rôles par établissement), mais limité pour
+  l'instant à `SUPER_ADMIN` et à la lecture d'établissement — les 5 autres rôles métier
+  (DIRECTION, SECRETARIAT, SURVEILLANT, ENSEIGNANT, ECONOMAT) n'ont aucune route protégée.
+- **Bilingue (fr/en)** : seul un champ `langue` sur `Utilisateur` existe ; aucune
+  internationalisation des réponses API/messages d'erreur (tous les messages sont en français
+  en dur, ex. `AuthService`, `EtablissementService`).
+- **Mobile Money / paiements** : complètement hors scope du code actuel alors que c'est un
+  objectif mesurable explicite du cahier des charges (« Part des paiements enregistrés avec
+  reçu numérique : 100% »).
+- **Connectivité irrégulière / mode dégradé** : aucune considération (cache, retry, file
+  d'attente) dans le code actuel — cohérent avec le fait que c'est seulement un backend API
+  pour l'instant, mais à garder en tête pour le client mobile à venir.
+- **Objectifs mesurables** du cahier des charges (délai de notification < 1h, délai de
+  détection impayé < 3 jours, réduction de 90% du délai de bulletin) ne sont pas mesurables
+  aujourd'hui puisque les modules correspondants (présences, paiements, notes) n'existent pas.
+
+## 4. Ce qui est fait et conforme
+
+- Authentification (inscription/connexion parent par téléphone **ou** email, JWT stateless,
+  BCrypt) correspond à CU-PAR-01.
+- Modèle RBAC contextualisé par établissement (`role_utilisateur`, contrainte SQL forçant
+  `SUPER_ADMIN` sans établissement) correspond au glossaire RBAC + multi-tenant.
+  et à CU-SAD-01/02 en partie.
+- Création d'établissement réservée au super-admin correspond à CU-SAD-01.
+- Le schéma SQL anticipe correctement plusieurs cas d'usage non encore exposés en API :
+  `annee_scolaire`/`periode` (séquence/trimestre, cohérent avec le glossaire),
+  `parent_eleve` (droits distincts voir/payer/justifier — conforme à la règle de gestion
+  « droits d'un tuteur définis par enfant »), `inscription` (types NOUVEAU/REINSCRIPTION/
+  TRANSFERT_ENTRANT, statut SORTI/ABANDON).
+
+## 5. Priorités suggérées pour la suite (cas M manquants, dans un ordre logique de dépendances)
+
+1. ~~**Classes et matières**~~ — fait, voir section 6.
+2. ~~**Secrétariat** (CU-SEC-01, 03, 04, 05)~~ — fait, voir section 6.
+3. **Présences** (CU-ENS-03, CU-SUR-01/02/04, CU-PAR-05) — débloque aussi la notification
+   d'absence (objectif mesurable « < 1h »).
+4. **Notes et bulletins** (CU-ENS-04/05, CU-DIR-05, CU-PAR-07/08).
+5. **Paiements** (CU-ECO-01/02/03/06/07/08, CU-PAR-10/11/12, CU-DIR-04/07).
+6. **Notifications système** (CU-SYS-01/03) — transverse aux modules 3, 4, 5.
+7. **Tableaux de bord direction** (CU-DIR-01) une fois les modules 3-5 posés.
+
+Restent aussi en attente, non bloquants pour la suite ci-dessus : CU-SEC-02 (réinscription),
+CU-SEC-06 (historique de correction de dossier), CU-PAR-02 (le parent consomme lui-même le
+code de liaison généré par CU-SEC-04 — endpoint encore à écrire côté parent), CU-DIR-03
+(attribution de rôles via API, le modèle RBAC existe déjà).
+
+## 6. Détail de ce qui vient d'être implémenté (module classes/matières + secrétariat)
+
+- `AnneeScolaireController`/`Service` : `POST`/`GET /api/v1/etablissements/{id}/annees-scolaires`
+  — paramétrage minimal nécessaire pour que les classes et inscriptions aient une année
+  scolaire valide (une seule `courante` par établissement, imposé par le service).
+- `ClasseController`/`Service` et `MatiereController`/`Service` : CRUD de base (création +
+  liste) sous `/etablissements/{id}/classes` et `/etablissements/{id}/matieres`.
+- Migration `V2__classes_matieres_secretariat.sql` : tables `classe`, `matiere`,
+  `code_liaison`, plus la FK `inscription.classe_id → classe.id` laissée en attente par `V1`.
+- `EleveController`/`Service` (package `eleve`, nouveau) :
+  - inscription élève + dossier (`Eleve` + `Inscription`) avec vérification d'unicité du
+    matricule par établissement ;
+  - affectation en classe, résolue via l'année scolaire `courante` de l'établissement ;
+  - enregistrement tuteur : lien direct et validé si le tuteur a déjà un compte
+    (`utilisateur` trouvé par téléphone/email), sinon génération d'un `code_liaison` à
+    consommer plus tard (CU-PAR-02, non implémenté) ;
+  - validation/rejet d'une demande de liaison `parent_eleve` en statut `EN_ATTENTE`.
+- `PhoneNumbers` (package `identity`) rendue publique pour être réutilisée par le module
+  `eleve` plutôt que dupliquée.
+- Toutes les routes sont restreintes par établissement via les autorités JWT
+  (`SUPER_ADMIN`, ou `DIRECTION:<id>` / `SECRETARIAT:<id>` selon l'endpoint).
+- Correction connexe : `AuthDtos` était un stub vide qui empêchait déjà la compilation du
+  projet avant ce travail (`AuthController`/`AuthService` référençaient des records
+  inexistants) ; complété avec `RegisterRequest`, `LoginRequest`, `AuthResponse`, `UserView`,
+  `RoleView`.
