@@ -6,7 +6,8 @@ de référence du groupe 5 (UCAC-ICAM) :
 - `cas-utilisation-smart-realization.pdf`
 
 État initial : 18/11/2026. Mis à jour le 18/11/2026 après implémentation du module
-« année scolaire / classes / matières / secrétariat » (voir section 6).
+« année scolaire / classes / matières / secrétariat » (voir section 6), puis après
+réorganisation du code en couches et implémentation du module « présences » (section 7).
 
 ## 1. Vue d'ensemble
 
@@ -39,7 +40,7 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 | CU-PAR-02 | Lier un enfant via code/invitation | M | 🟡 table `parent_eleve` en base, aucun endpoint |
 | CU-PAR-03 | Basculer entre enfants/établissements, vue consolidée | M | ❌ |
 | CU-PAR-04 | Consulter la fiche enfant | M | ❌ |
-| CU-PAR-05 | Consulter présences/absences/retards | M | ❌ (pas de module présence) |
+| CU-PAR-05 | Consulter présences/absences/retards | M | ✅ `PresenceEleveController.listPourParent` (`GET /mes-enfants/{id}/presences`), limité aux liens `VALIDE` avec `peutConsulter` |
 | CU-PAR-06 | Justifier une absence | S | ❌ |
 | CU-PAR-07 | Consulter les notes | M | ❌ (pas de module notes) |
 | CU-PAR-08 | Consulter/télécharger bulletins | M | ❌ |
@@ -81,9 +82,27 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 | CU-SEC-09 | Gérer dossiers du personnel | M | ❌ |
 | CU-SEC-10 | Archiver dossier élève sorti | S | 🟡 `inscription.statut = SORTI` possible en base, pas de flux |
 
-### 2.4 Surveillant général — ❌ entièrement absent (CU-SUR-01 à 08, dont M : 01-05)
+### 2.4 Surveillant général
+| ID | Cas d'utilisation | Prio | État |
+|---|---|---|---|
+| CU-SUR-01 | Consulter les présences par classe et par jour | M | ✅ `AppelController.getParDate` |
+| CU-SUR-02 | Saisir ou corriger l'appel quand l'enseignant ne l'a pas fait | M | ✅ `AppelController.saisir`/`corriger` (rôle SURVEILLANT autorisé) |
+| CU-SUR-03 | Valider les justificatifs d'absence soumis par les parents | M | ❌ (pas de workflow de justification) |
+| CU-SUR-04 | Enregistrer les retards et sorties anticipées | M | ✅ via `corriger` (statuts RETARD/SORTIE_ANTICIPEE + heures) |
+| CU-SUR-05 | Enregistrer l'assiduité des enseignants et du personnel | M | ❌ (le modèle actuel ne couvre que les élèves) |
+| CU-SUR-06 | Enregistrer sanctions et avertissements | C | ❌ |
+| CU-SUR-07 | Déclencher ou relancer des notifications aux parents | S | ❌ |
+| CU-SUR-08 | Éditer les statistiques d'assiduité | S | ❌ |
 
-### 2.5 Enseignant — ❌ entièrement absent (CU-ENS-01 à 10, dont M : 01-05)
+### 2.5 Enseignant
+| ID | Cas d'utilisation | Prio | État |
+|---|---|---|---|
+| CU-ENS-01 | Se connecter et choisir son établissement | M | 🟡 connexion couverte par CU-PAR-01 (même endpoint) ; pas de sélecteur multi-établissement dédié |
+| CU-ENS-02 | Consulter ses classes, matières et emploi du temps | M | ❌ (aucune affectation enseignant↔classe/matière en base) |
+| CU-ENS-03 | Faire l'appel d'une classe | M | ✅ `AppelController.saisir` |
+| CU-ENS-04 | Saisir les notes d'une évaluation | M | ❌ |
+| CU-ENS-05 | Corriger une note | M | ❌ |
+| CU-ENS-06 à 10 | Appréciations, statistiques, cahier de textes, messagerie | S/C | ❌ |
 
 ### 2.6 Comptable/Économat — ❌ entièrement absent (CU-ECO-01 à 09, dont M : 01-03, 06-08)
 
@@ -138,17 +157,23 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 
 1. ~~**Classes et matières**~~ — fait, voir section 6.
 2. ~~**Secrétariat** (CU-SEC-01, 03, 04, 05)~~ — fait, voir section 6.
-3. **Présences** (CU-ENS-03, CU-SUR-01/02/04, CU-PAR-05) — débloque aussi la notification
-   d'absence (objectif mesurable « < 1h »).
-4. **Notes et bulletins** (CU-ENS-04/05, CU-DIR-05, CU-PAR-07/08).
+3. ~~**Présences** (CU-ENS-03, CU-SUR-01/02/04, CU-PAR-05)~~ — fait, voir section 7. Reste
+   hors scope : la notification d'absence elle-même (objectif mesurable « < 1h », dépend du
+   module notifications système) et l'assiduité du personnel (CU-SUR-05).
+4. **Notes et bulletins** (CU-ENS-04/05, CU-DIR-05, CU-PAR-07/08) — nécessite une affectation
+   enseignant↔classe/matière (CU-ENS-02, pas encore modélisée) pour restreindre la saisie des
+   notes à l'enseignant concerné.
 5. **Paiements** (CU-ECO-01/02/03/06/07/08, CU-PAR-10/11/12, CU-DIR-04/07).
-6. **Notifications système** (CU-SYS-01/03) — transverse aux modules 3, 4, 5.
-7. **Tableaux de bord direction** (CU-DIR-01) une fois les modules 3-5 posés.
+6. **Notifications système** (CU-SYS-01/03) — transverse aux modules 4, 5, et à l'absence
+   (module 3).
+7. **Tableaux de bord direction** (CU-DIR-01) une fois les modules 4-6 posés.
 
 Restent aussi en attente, non bloquants pour la suite ci-dessus : CU-SEC-02 (réinscription),
 CU-SEC-06 (historique de correction de dossier), CU-PAR-02 (le parent consomme lui-même le
 code de liaison généré par CU-SEC-04 — endpoint encore à écrire côté parent), CU-DIR-03
-(attribution de rôles via API, le modèle RBAC existe déjà).
+(attribution de rôles via API, le modèle RBAC existe déjà), CU-SUR-03/CU-PAR-06 (justification
+d'absence — les colonnes nécessaires n'existent pas encore sur `presence_eleve`), CU-SUR-05
+(assiduité du personnel).
 
 ## 6. Détail de ce qui vient d'être implémenté (module classes/matières + secrétariat)
 
@@ -175,3 +200,51 @@ code de liaison généré par CU-SEC-04 — endpoint encore à écrire côté pa
   projet avant ce travail (`AuthController`/`AuthService` référençaient des records
   inexistants) ; complété avec `RegisterRequest`, `LoginRequest`, `AuthResponse`, `UserView`,
   `RoleView`.
+
+## 7. Réorganisation en couches + module présences
+
+### Réorganisation architecturale
+
+Chaque package de fonctionnalité (`identity`, `school`, `eleve`) est désormais scindé en
+sous-packages par couche plutôt que d'avoir tous les fichiers à plat :
+- `model/` — entités JPA et enums
+- `repository/` — interfaces Spring Data
+- `service/` — logique métier
+- `dto/` — records de requête/réponse (classes `XxxDtos`, inchangées sinon)
+- `web/` — contrôleurs REST
+
+Les packages transverses (`security`, `config`, `common`) restent plats : ils ne suivent pas
+ce découpage métier. `PhoneNumbers` (utilitaire) vit dans `identity/service/`.
+
+Risque pris en compte : le dépôt n'avait pas de contrôle de version avant cette session. Un
+`git init` + commit de référence a été fait avant tout déplacement de fichier, pour pouvoir
+revenir en arrière en cas de problème.
+
+### Module présences (CU-ENS-03, CU-SUR-01/02/04, CU-PAR-05)
+
+Nouveau package `presence`, construit directement selon l'architecture en couches ci-dessus.
+
+- Migration `V3__presences.sql` : tables `appel` (une ligne par classe et par jour, unique
+  sur `classe_id, date_appel`) et `presence_eleve` (une ligne par élève inscrit à cette classe
+  pour cet appel, statut `PRESENT`/`ABSENT`/`RETARD`/`SORTIE_ANTICIPEE`).
+- `AppelService.saisirAppel` (CU-ENS-03, et CU-SUR-02 pour le cas « l'enseignant ne l'a pas
+  fait ») : ne demande que les exceptions à la requête — tout élève du registre de la classe
+  non mentionné est marqué `PRESENT` par défaut. Rejette la création si un appel existe déjà
+  pour cette classe à cette date (redirige vers la correction).
+- `AppelService.corrigerAppel` (CU-SUR-02 correction, CU-SUR-04 retards/sorties anticipées) :
+  met à jour des lignes `presence_eleve` déjà existantes, avec heure d'arrivée/sortie.
+- `AppelService.getParClasseEtDate` (CU-SUR-01) : lecture d'un appel par classe + jour.
+- `AppelService.listPourEleve` / `listPourParent` : historique des présences d'un élève,
+  respectivement pour le personnel de l'établissement et pour un parent — ce dernier n'est
+  pas autorisé par rôle d'établissement (le parent n'en a pas) mais par vérification, dans le
+  service, du lien `parent_eleve` (`statut = VALIDE` et `peutConsulter = true`). Endpoint :
+  `GET /api/v1/mes-enfants/{eleveId}/presences`.
+- Routes de saisie/correction ouvertes aux rôles `ENSEIGNANT`, `SURVEILLANT`, `DIRECTION` et
+  `SUPER_ADMIN` d'un établissement (pas de table d'affectation enseignant↔classe pour
+  restreindre plus finement : tout enseignant de l'établissement peut aujourd'hui faire
+  l'appel de n'importe quelle classe — acceptable pour le MVP, à resserrer si CU-ENS-02 est
+  implémenté).
+
+Non couvert par ce lot (voir section 5) : notification automatique des parents en cas
+d'absence (CU-SYS-01, nécessite le module notifications), justification d'absence côté parent
+et validation côté surveillant (CU-PAR-06, CU-SUR-03), assiduité du personnel (CU-SUR-05).

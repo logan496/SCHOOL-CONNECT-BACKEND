@@ -10,4 +10,6 @@ public interface MatiereRepository extends JpaRepository<Matiere, UUID> {
     List<Matiere> findByEtablissementIdOrderByNom(UUID etablissementId);
 
     boolean existsByEtablissementIdAndCode(UUID etablissementId, String code);
+
+    boolean existsByIdAndEtablissementId(UUID id, UUID etablissementId);
 }
