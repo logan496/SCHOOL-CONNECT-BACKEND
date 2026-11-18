@@ -42,7 +42,7 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 | CU-PAR-04 | Consulter la fiche enfant | M | ❌ |
 | CU-PAR-05 | Consulter présences/absences/retards | M | ✅ `PresenceEleveController.listPourParent` (`GET /mes-enfants/{id}/presences`), limité aux liens `VALIDE` avec `peutConsulter` |
 | CU-PAR-06 | Justifier une absence | S | ❌ |
-| CU-PAR-07 | Consulter les notes | M | ❌ (pas de module notes) |
+| CU-PAR-07 | Consulter les notes | M | ✅ `NoteEleveController.listPourParent` (`GET /mes-enfants/{id}/notes`), par matière et par période, avec moyenne calculée |
 | CU-PAR-08 | Consulter/télécharger bulletins | M | ❌ |
 | CU-PAR-09 | Consulter emploi du temps | S | ❌ |
 | CU-PAR-10 | Consulter situation financière | M | ❌ |
@@ -58,7 +58,7 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 | ID | Cas d'utilisation | Prio | État |
 |---|---|---|---|
 | CU-DIR-01 | Tableau de bord | M | ❌ |
-| CU-DIR-02 | Paramétrer année scolaire/périodes/classes | M | 🟡 année scolaire et classes exposées (`AnneeScolaireController`, `ClasseController`), matières aussi (`MatiereController`) ; `periode` (séquence/trimestre) toujours sans service/contrôleur |
+| CU-DIR-02 | Paramétrer année scolaire/périodes/classes | M | ✅ année scolaire, classes, matières et périodes exposées (`AnneeScolaireController`, `ClasseController`, `MatiereController`, `PeriodeController`), y compris ouverture/fermeture de la saisie des notes |
 | CU-DIR-03 | Gérer utilisateurs et rôles | M | 🟡 `role_utilisateur` en base + autorités JWT, aucun endpoint d'attribution |
 | CU-DIR-04 | Grille tarifaire et échéanciers | M | ❌ |
 | CU-DIR-05 | Valider résultats / publier bulletins | M | ❌ |
@@ -98,10 +98,10 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 | ID | Cas d'utilisation | Prio | État |
 |---|---|---|---|
 | CU-ENS-01 | Se connecter et choisir son établissement | M | 🟡 connexion couverte par CU-PAR-01 (même endpoint) ; pas de sélecteur multi-établissement dédié |
-| CU-ENS-02 | Consulter ses classes, matières et emploi du temps | M | ❌ (aucune affectation enseignant↔classe/matière en base) |
+| CU-ENS-02 | Consulter ses classes, matières et emploi du temps | M | 🟡 `AffectationEnseignantController.mesAffectations` couvre classes/matières ; pas d'emploi du temps |
 | CU-ENS-03 | Faire l'appel d'une classe | M | ✅ `AppelController.saisir` |
-| CU-ENS-04 | Saisir les notes d'une évaluation | M | ❌ |
-| CU-ENS-05 | Corriger une note | M | ❌ |
+| CU-ENS-04 | Saisir les notes d'une évaluation | M | ✅ `EvaluationController.creer` |
+| CU-ENS-05 | Corriger une note | M | ✅ `EvaluationController.corriger`, limité à la période ouverte (`periode.saisie_ouverte`) |
 | CU-ENS-06 à 10 | Appréciations, statistiques, cahier de textes, messagerie | S/C | ❌ |
 
 ### 2.6 Comptable/Économat — ❌ entièrement absent (CU-ECO-01 à 09, dont M : 01-03, 06-08)
@@ -160,13 +160,13 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 3. ~~**Présences** (CU-ENS-03, CU-SUR-01/02/04, CU-PAR-05)~~ — fait, voir section 7. Reste
    hors scope : la notification d'absence elle-même (objectif mesurable « < 1h », dépend du
    module notifications système) et l'assiduité du personnel (CU-SUR-05).
-4. **Notes et bulletins** (CU-ENS-04/05, CU-DIR-05, CU-PAR-07/08) — nécessite une affectation
-   enseignant↔classe/matière (CU-ENS-02, pas encore modélisée) pour restreindre la saisie des
-   notes à l'enseignant concerné.
+4. ~~**Notes** (CU-ENS-02/04/05, CU-PAR-07)~~ — fait, voir section 8. Reste : **bulletins**
+   (CU-DIR-05 validation/publication, CU-PAR-08 PDF) — nécessite moyenne générale + rang par
+   classe (pas seulement par matière) et génération de PDF, volontairement laissé de côté.
 5. **Paiements** (CU-ECO-01/02/03/06/07/08, CU-PAR-10/11/12, CU-DIR-04/07).
-6. **Notifications système** (CU-SYS-01/03) — transverse aux modules 4, 5, et à l'absence
-   (module 3).
-7. **Tableaux de bord direction** (CU-DIR-01) une fois les modules 4-6 posés.
+6. **Notifications système** (CU-SYS-01/03) — transverse au module 5 et à l'absence (module 3).
+7. **Tableaux de bord direction** (CU-DIR-01) une fois les modules 5-6 posés, et **bulletins**
+   (voir point 4).
 
 Restent aussi en attente, non bloquants pour la suite ci-dessus : CU-SEC-02 (réinscription),
 CU-SEC-06 (historique de correction de dossier), CU-PAR-02 (le parent consomme lui-même le
@@ -248,3 +248,40 @@ Nouveau package `presence`, construit directement selon l'architecture en couche
 Non couvert par ce lot (voir section 5) : notification automatique des parents en cas
 d'absence (CU-SYS-01, nécessite le module notifications), justification d'absence côté parent
 et validation côté surveillant (CU-PAR-06, CU-SUR-03), assiduité du personnel (CU-SUR-05).
+
+## 8. Module notes (CU-ENS-02/04/05, CU-PAR-07)
+
+Deux prérequis manquants ont été ajoutés dans `school` avant le module notes lui-même :
+
+- **Périodes** (`PeriodeController`, `/annees-scolaires/{id}/periodes`) : la table `periode`
+  existait depuis `V1` mais sans service ni contrôleur. Ajouté avec un verrou explicite
+  `saisie_ouverte` (ouvert/fermé par `PATCH .../periodes/{id}/ouvrir|fermer`, réservé à
+  `DIRECTION`/`SUPER_ADMIN`) : CU-ENS-04/05 vérifient ce verrou avant toute écriture.
+- **Affectation enseignant↔classe/matière** (`AffectationEnseignantController`,
+  `/etablissements/{id}/affectations` pour la direction, `/mes-affectations` pour
+  l'enseignant lui-même — CU-ENS-02). Vérifie que l'utilisateur affecté a bien le rôle
+  `ENSEIGNANT` dans l'établissement avant de créer l'affectation.
+
+Nouveau package `note` (architecture en couches, comme `presence`) :
+
+- Migration `V4__periodes_affectations_notes.sql` : tables `affectation_enseignant`,
+  `evaluation`, `note`.
+- `NoteService.creerEvaluation` (CU-ENS-04) : crée une évaluation (nom, coefficient, barème,
+  période, date) et les notes initiales en une seule requête. Les élèves omis restent
+  simplement sans note (distinct d'une note à 0), à compléter via la correction.
+- `NoteService.corrigerNotes` (CU-ENS-05) : met à jour des notes existantes ou en ajoute pour
+  les élèves omis à la création — la « correction » et la « saisie tardive » partagent le même
+  endpoint. Trace l'auteur de la dernière modification (`note.modifie_par`), mais sans
+  historique complet des valeurs précédentes (pas de table d'audit dédiée, cohérent avec le
+  reste du projet qui n'en a pas non plus).
+- Autorisation : `DIRECTION`/`SUPER_ADMIN` peuvent agir sur toute classe/matière de
+  l'établissement ; un `ENSEIGNANT` doit avoir une `affectation_enseignant` correspondante,
+  vérifiée en base (pas seulement par rôle générique, contrairement au module présences).
+- `NoteService.listPourEleve` / `listPourParent` (CU-PAR-07) : regroupe les notes d'un élève
+  par matière pour une période donnée, avec calcul de la moyenne pondérée par les coefficients
+  (notes ramenées sur 20 selon le barème de chaque évaluation). Même pattern d'autorisation
+  parent que le module présences (lien `parent_eleve` validé + `peutConsulter`), endpoint
+  `GET /api/v1/mes-enfants/{eleveId}/notes?periodeId=&matiereId=`.
+
+Non couvert (voir section 5) : moyenne générale tous matières confondues, rang dans la classe,
+validation/publication des bulletins (CU-DIR-05), export PDF du bulletin (CU-PAR-08).
