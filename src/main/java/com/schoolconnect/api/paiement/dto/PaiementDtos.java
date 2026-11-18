@@ -11,6 +11,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 public final class PaiementDtos {
@@ -56,5 +57,12 @@ public final class PaiementDtos {
     }
 
     public record RapportCaisseView(LocalDate date, BigDecimal total, List<RapportCaisseLigne> parMode) {
+    }
+
+    /** Relance manuelle : sans liste, tous les élèves en impayé échu sont relancés. */
+    public record RelancerImpayesRequest(Set<UUID> eleveIds) {
+    }
+
+    public record RelanceView(int elevesEnImpaye, int elevesRelances, int notificationsEnvoyees, int elevesSansParentLie) {
     }
 }

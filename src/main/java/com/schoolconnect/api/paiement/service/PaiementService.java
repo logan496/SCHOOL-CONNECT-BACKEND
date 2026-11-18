@@ -8,6 +8,8 @@ import com.schoolconnect.api.eleve.model.StatutParentEleve;
 import com.schoolconnect.api.eleve.repository.EleveRepository;
 import com.schoolconnect.api.eleve.repository.InscriptionRepository;
 import com.schoolconnect.api.eleve.repository.ParentEleveRepository;
+import com.schoolconnect.api.notification.model.TypeNotification;
+import com.schoolconnect.api.notification.service.NotificationService;
 import com.schoolconnect.api.paiement.dto.PaiementDtos.AnnulerPaiementRequest;
 import com.schoolconnect.api.paiement.dto.PaiementDtos.CreerFraisScolaireRequest;
 import com.schoolconnect.api.paiement.dto.PaiementDtos.EnregistrerPaiementRequest;
@@ -33,10 +35,14 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -46,6 +52,7 @@ public class PaiementService {
 
     private static final String RECU_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final int RECU_LENGTH = 10;
+    private static final DateTimeFormatter FORMAT_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final FraisScolaireRepository fraisScolaires;
     private final PaiementRepository paiements;
@@ -54,12 +61,13 @@ public class PaiementService {
     private final InscriptionRepository inscriptions;
     private final EleveRepository eleves;
     private final ParentEleveRepository parentsEleves;
+    private final NotificationService notifications;
     private final SecureRandom random = new SecureRandom();
 
     public PaiementService(FraisScolaireRepository fraisScolaires, PaiementRepository paiements,
                            AnneeScolaireRepository annees, ClasseRepository classes,
                            InscriptionRepository inscriptions, EleveRepository eleves,
-                           ParentEleveRepository parentsEleves) {
+                           ParentEleveRepository parentsEleves, NotificationService notifications) {
         this.fraisScolaires = fraisScolaires;
         this.paiements = paiements;
         this.annees = annees;
@@ -67,6 +75,7 @@ public class PaiementService {
         this.inscriptions = inscriptions;
         this.eleves = eleves;
         this.parentsEleves = parentsEleves;
+        this.notifications = notifications;
     }
 
     /** CU-DIR-04 : définir la grille tarifaire (une ligne = un montant dû, pour un niveau, à une échéance). */
@@ -113,7 +122,12 @@ public class PaiementService {
         p.setNumeroRecu(genererNumeroRecuUnique());
         p.setStatut(StatutPaiement.VALIDE);
         p.setEnregistrePar(enregistrePar);
-        return toView(paiements.save(p));
+        p = paiements.save(p);
+        notifications.notifierParents(etablissementId, eleveId, TypeNotification.PAIEMENT_ENREGISTRE,
+                "Paiement enregistré pour " + nomEleve(eleveId),
+                "Un paiement de " + montant(p.getMontant()) + " du " + p.getDatePaiement().format(FORMAT_DATE)
+                        + " a été enregistré. Reçu n° " + p.getNumeroRecu() + ".");
+        return toView(p);
     }
 
     /** CU-ECO-07 : annuler un paiement, avec justification et traçabilité (pas de suppression). */
@@ -131,7 +145,12 @@ public class PaiementService {
         p.setMotifAnnulation(request.motif());
         p.setAnnulePar(annulePar);
         p.setAnnuleLe(Instant.now());
-        return toView(paiements.save(p));
+        p = paiements.save(p);
+        notifications.notifierParents(etablissementId, eleveId, TypeNotification.PAIEMENT_ANNULE,
+                "Paiement annulé pour " + nomEleve(eleveId),
+                "Le paiement de " + montant(p.getMontant()) + " (reçu n° " + p.getNumeroRecu()
+                        + ") a été annulé par l'établissement. Motif : " + p.getMotifAnnulation());
+        return toView(p);
     }
 
     /** CU-ECO-01 : situation financière d'un élève, pour le personnel de l'établissement. */
@@ -165,6 +184,38 @@ public class PaiementService {
                 .sorted(Comparator.comparing(SituationFinanciereView::solde).reversed())
                 .map(s -> new ImpayeView(s.eleveId(), s.eleve(), s.totalDu(), s.totalPaye(), s.solde()))
                 .toList();
+    }
+
+    /**
+     * Élèves dont le montant arrivé à échéance au {@code date} n'est pas couvert par leurs paiements.
+     * Contrairement à {@link #listImpayes}, les frais dont l'échéance n'est pas encore passée sont
+     * ignorés : c'est la base des relances (CU-ECO-06, CU-SYS-03). {@code totalDu} = dû échu.
+     */
+    @Transactional(readOnly = true)
+    public List<ImpayeView> listImpayesEchus(UUID etablissementId, LocalDate date) {
+        UUID anneeId = anneeCouranteId(etablissementId);
+        return inscriptions.findByEtablissementIdAndAnneeScolaireIdOrderByMatricule(etablissementId, anneeId).stream()
+                .map(i -> calculerSituation(etablissementId, i.getEleveId()))
+                .map(s -> {
+                    BigDecimal duEchu = s.fraisApplicables().stream()
+                            .filter(f -> !f.dateEcheance().isAfter(date))
+                            .map(FraisScolaireView::montant).reduce(BigDecimal.ZERO, BigDecimal::add);
+                    return new ImpayeView(s.eleveId(), s.eleve(), duEchu, s.totalPaye(), duEchu.subtract(s.totalPaye()));
+                })
+                .filter(i -> i.solde().signum() > 0)
+                .sorted(Comparator.comparing(ImpayeView::solde).reversed())
+                .toList();
+    }
+
+    /** Formate un montant pour les messages aux parents (ex. « 25 000 FCFA »). */
+    public static String montant(BigDecimal montant) {
+        DecimalFormatSymbols symboles = new DecimalFormatSymbols(Locale.FRANCE);
+        symboles.setGroupingSeparator(' ');
+        return new DecimalFormat("#,##0.##", symboles).format(montant) + " FCFA";
+    }
+
+    private String nomEleve(UUID eleveId) {
+        return eleves.findById(eleveId).map(e -> e.getPrenom() + " " + e.getNom()).orElse("votre enfant");
     }
 
     /** CU-ECO-08 : rapport de caisse pour un jour donné, par mode de paiement. */

@@ -8,6 +8,8 @@ import com.schoolconnect.api.eleve.model.StatutParentEleve;
 import com.schoolconnect.api.eleve.repository.EleveRepository;
 import com.schoolconnect.api.eleve.repository.InscriptionRepository;
 import com.schoolconnect.api.eleve.repository.ParentEleveRepository;
+import com.schoolconnect.api.notification.model.TypeNotification;
+import com.schoolconnect.api.notification.service.NotificationService;
 import com.schoolconnect.api.presence.dto.AppelDtos.AppelView;
 import com.schoolconnect.api.presence.dto.AppelDtos.CorrigerAppelRequest;
 import com.schoolconnect.api.presence.dto.AppelDtos.PresenceEleveView;
@@ -28,6 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -38,6 +42,9 @@ import java.util.stream.Collectors;
 @Service
 public class AppelService {
 
+    private static final DateTimeFormatter FORMAT_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    private static final DateTimeFormatter FORMAT_HEURE = DateTimeFormatter.ofPattern("HH'h'mm");
+
     private final AppelRepository appels;
     private final PresenceEleveRepository presences;
     private final ClasseRepository classes;
@@ -46,11 +53,12 @@ public class AppelService {
     private final InscriptionRepository inscriptions;
     private final EleveRepository eleves;
     private final ParentEleveRepository parentsEleves;
+    private final NotificationService notifications;
 
     public AppelService(AppelRepository appels, PresenceEleveRepository presences, ClasseRepository classes,
                         AnneeScolaireRepository annees, MatiereRepository matieres,
                         InscriptionRepository inscriptions, EleveRepository eleves,
-                        ParentEleveRepository parentsEleves) {
+                        ParentEleveRepository parentsEleves, NotificationService notifications) {
         this.appels = appels;
         this.presences = presences;
         this.classes = classes;
@@ -59,6 +67,7 @@ public class AppelService {
         this.inscriptions = inscriptions;
         this.eleves = eleves;
         this.parentsEleves = parentsEleves;
+        this.notifications = notifications;
     }
 
     /** CU-ENS-03 / CU-SUR-02 : faire l'appel d'une classe. Toute exception au PRESENT par défaut doit être listée. */
@@ -114,6 +123,7 @@ public class AppelService {
                 presence.setStatut(StatutPresence.PRESENT);
             }
             presences.save(presence);
+            notifierParentsSiNecessaire(etablissementId, presence, request.date());
         }
 
         return toView(appel);
@@ -131,10 +141,15 @@ public class AppelService {
             PresenceEleve presence = presences.findByAppelIdAndEleveId(appelId, saisie.eleveId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                             "L'élève " + saisie.eleveId() + " n'a pas d'enregistrement pour cet appel"));
+            StatutPresence ancienStatut = presence.getStatut();
             presence.setStatut(saisie.statut());
             presence.setHeureArrivee(saisie.heureArrivee());
             presence.setHeureSortie(saisie.heureSortie());
             presences.save(presence);
+            // On ne renotifie pas si le statut n'a pas changé (simple correction d'heure, par exemple).
+            if (ancienStatut != saisie.statut()) {
+                notifierParentsSiNecessaire(etablissementId, presence, appel.getDateAppel());
+            }
         }
         return toView(appel);
     }
@@ -187,6 +202,45 @@ public class AppelService {
                 .filter(v -> to == null || !v.date().isAfter(to))
                 .sorted(Comparator.comparing(PresenceHistoriqueView::date).reversed())
                 .toList();
+    }
+
+    /** CU-SYS-01 : prévient les parents/tuteurs d'une absence, d'un retard ou d'une sortie anticipée. */
+    private void notifierParentsSiNecessaire(UUID etablissementId, PresenceEleve presence, LocalDate date) {
+        TypeNotification type = switch (presence.getStatut()) {
+            case ABSENT -> TypeNotification.ABSENCE;
+            case RETARD -> TypeNotification.RETARD;
+            case SORTIE_ANTICIPEE -> TypeNotification.SORTIE_ANTICIPEE;
+            case PRESENT -> null;
+        };
+        if (type == null) {
+            return;
+        }
+        String eleve = eleves.findById(presence.getEleveId())
+                .map(e -> e.getPrenom() + " " + e.getNom())
+                .orElse("Votre enfant");
+        String jour = date.format(FORMAT_DATE);
+        String titre;
+        String message;
+        switch (type) {
+            case ABSENCE -> {
+                titre = "Absence de " + eleve;
+                message = eleve + " a été marqué(e) absent(e) le " + jour + ".";
+            }
+            case RETARD -> {
+                titre = "Retard de " + eleve;
+                message = eleve + " est arrivé(e) en retard le " + jour + heure(" à ", presence.getHeureArrivee()) + ".";
+            }
+            default -> {
+                titre = "Sortie anticipée de " + eleve;
+                message = eleve + " a quitté l'établissement avant la fin des cours le " + jour
+                        + heure(" à ", presence.getHeureSortie()) + ".";
+            }
+        }
+        notifications.notifierParents(etablissementId, presence.getEleveId(), type, titre, message);
+    }
+
+    private static String heure(String prefixe, LocalTime heure) {
+        return heure == null ? "" : prefixe + heure.format(FORMAT_HEURE);
     }
 
     private UUID anneeCouranteId(UUID etablissementId) {

@@ -25,7 +25,7 @@ existent, et uniquement côté inscription/authentification/paramétrage établi
 | Présences et absences (élèves et personnel) | **Absent** |
 | Notes, moyennes, rangs, bulletins PDF | **Absent** |
 | Paiements, grille tarifaire, reçus, impayés | **Absent** |
-| Notifications aux parents (push/SMS/email) | **Absent** |
+| Notifications aux parents (push/SMS/email) | **Partiel** — in-app + relances planifiées (section 10) ; aucun fournisseur SMS/e-mail/push branché |
 | Espaces dédiés par profil | **Partiel** — RBAC (rôles + portée établissement) en place dans le JWT, pas d'espaces/API par profil |
 | Tableaux de bord et exports | **Absent** |
 
@@ -48,7 +48,7 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 | CU-PAR-10 | Consulter situation financière | M | ✅ `SituationFinanciereParentController` (`GET /mes-enfants/{id}/situation-financiere`) : dû, payé, solde |
 | CU-PAR-11 | Payer en ligne / déclarer un paiement | M | ❌ (paiement en ligne hors MVP par choix du cahier des charges ; « déclarer un paiement » — un parent signale lui-même un paiement effectué — non implémenté, seul l'économat enregistre) |
 | CU-PAR-12 | Télécharger reçus/historique | M | 🟡 historique des paiements inclus dans la situation financière (JSON) ; pas de téléchargement PDF du reçu |
-| CU-PAR-13 | Recevoir notifications | M | ❌ |
+| CU-PAR-13 | Recevoir notifications | M | ✅ in-app (`/mes-notifications`), voir section 10 ; pas de SMS/e-mail/push réel |
 | CU-PAR-14 | Consulter annonces/convocations | M | ❌ |
 | CU-PAR-15 | Échanger avec l'établissement | C | ❌ (hors MVP) |
 | CU-PAR-16 | Gérer profil/préférences notif | S | 🟡 `langue` sur `Utilisateur`, pas de préférences notif |
@@ -91,7 +91,7 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 | CU-SUR-04 | Enregistrer les retards et sorties anticipées | M | ✅ via `corriger` (statuts RETARD/SORTIE_ANTICIPEE + heures) |
 | CU-SUR-05 | Enregistrer l'assiduité des enseignants et du personnel | M | ❌ (le modèle actuel ne couvre que les élèves) |
 | CU-SUR-06 | Enregistrer sanctions et avertissements | C | ❌ |
-| CU-SUR-07 | Déclencher ou relancer des notifications aux parents | S | ❌ |
+| CU-SUR-07 | Déclencher ou relancer des notifications aux parents | S | ✅ message libre aux parents d'un élève, voir section 10 |
 | CU-SUR-08 | Éditer les statistiques d'assiduité | S | ❌ |
 
 ### 2.5 Enseignant
@@ -112,7 +112,7 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 | CU-ECO-03 | Émettre un reçu numérique | M | 🟡 numéro de reçu généré et consultable (JSON), pas d'impression/envoi PDF |
 | CU-ECO-04 | Remises, bourses, échéanciers personnalisés | S | ❌ (grille tarifaire uniforme par niveau) |
 | CU-ECO-05 | Rapprocher les paiements en ligne avec la comptabilité | S | ❌ (hors sujet, pas de paiement en ligne) |
-| CU-ECO-06 | Suivre les impayés et envoyer des relances | M | 🟡 `RapportFinancierController.impayes` liste les soldes positifs ; pas d'envoi de relance (notifications) |
+| CU-ECO-06 | Suivre les impayés et envoyer des relances | M | ✅ liste des impayés + relance manuelle (`POST /impayes/relances`) et automatique, voir section 10 |
 | CU-ECO-07 | Annuler ou corriger un paiement (justification + validation) | M | ✅ `PaiementController.annuler`, motif obligatoire, tracé (`annule_par`/`annule_le`) |
 | CU-ECO-08 | Éditer les rapports de caisse journaliers/périodiques | M | 🟡 `RapportFinancierController.rapportCaisse` journalier uniquement, pas de rapport périodique agrégé |
 | CU-ECO-09 | Exporter les données financières | S | ❌ |
@@ -127,7 +127,7 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 | CU-SAD-05 | Support tracé | S | ❌ |
 | CU-SAD-06 | Comptes en doublon | S | ❌ |
 
-### 2.8 Acteur système — ❌ entièrement absent (notifications, calculs auto, rappels, sauvegarde/audit)
+### 2.8 Acteur système — 🟡 notifications d'absence/retard (CU-SYS-01) et relances d'impayés planifiées (CU-SYS-03) faites (section 10) ; calculs auto de bulletins, sauvegarde/audit absents
 
 ## 3. Écarts par rapport au cahier des charges (hors cas d'utilisation)
 
@@ -177,7 +177,8 @@ Légende : ✅ fait · 🟡 partiel (schéma seul, ou fonctionnalité minimale) 
 5. ~~**Paiements** (CU-ECO-01/02/03/06/07/08, CU-PAR-10/12, CU-DIR-04/07)~~ — fait, voir
    section 9. Pas de paiement en ligne (choix du cahier des charges), pas de reçu PDF, pas de
    relances automatiques (dépend du module notifications).
-6. **Notifications système** (CU-SYS-01/03) — transverse au module 5 et à l'absence (module 3).
+6. ~~**Notifications système** (CU-SYS-01/03)~~ — fait, voir section 10. Canal in-app
+   uniquement : l'envoi SMS/e-mail/push attend le choix d'un fournisseur (interface prête).
 7. **Tableaux de bord direction** (CU-DIR-01) une fois le module 6 posé, et **bulletins**
    (voir point 4).
 
@@ -258,8 +259,7 @@ Nouveau package `presence`, construit directement selon l'architecture en couche
   l'appel de n'importe quelle classe — acceptable pour le MVP, à resserrer si CU-ENS-02 est
   implémenté).
 
-Non couvert par ce lot (voir section 5) : notification automatique des parents en cas
-d'absence (CU-SYS-01, nécessite le module notifications), justification d'absence côté parent
+Non couvert par ce lot (voir section 5) : justification d'absence côté parent
 et validation côté surveillant (CU-PAR-06, CU-SUR-03), assiduité du personnel (CU-SUR-05).
 
 ## 8. Module notes (CU-ENS-02/04/05, CU-PAR-07)
@@ -335,4 +335,55 @@ Nouveau package `paiement` (architecture en couches, comme `presence` et `note`)
   ligne à autoriser).
 
 Non couvert (voir section 5) : remises/bourses (CU-ECO-04), rapprochement paiements en ligne
-(CU-ECO-05, sans objet), export de données (CU-ECO-09), reçu PDF, relances automatiques.
+(CU-ECO-05, sans objet), export de données (CU-ECO-09), reçu PDF. Les relances ont été
+ajoutées avec le module notifications (section 10).
+
+## 10. Module notifications (CU-SYS-01/03, CU-PAR-13, CU-SUR-07, relances CU-ECO-06)
+
+Nouveau package `notification` (mêmes couches que les autres modules) :
+
+- Migration `V6__notifications.sql` : table `notification` (destinataire, établissement,
+  élève, type, titre, message, `lue_le`). Une ligne par parent/tuteur destinataire.
+- Destinataires : tous les parents/tuteurs ayant un lien `parent_eleve` **validé** avec
+  `peutConsulter`. Un élève sans parent lié ne génère aucune notification (comptabilisé dans
+  les relances, voir ci-dessous).
+- Atomicité : les notifications sont créées dans la transaction de l'action déclenchante
+  (appel, paiement). Si l'action échoue, rien n'est notifié.
+- **Canaux externes** : interface `CanalNotificationExterne`, appelée après validation de la
+  transaction (un échec d'envoi n'annule pas la notification in-app). **Aucune implémentation
+  n'est fournie** : le choix d'un fournisseur SMS/e-mail/push (et ses identifiants) reste à
+  faire. Pour en brancher un, il suffit de déclarer un bean qui implémente l'interface.
+  L'objectif « délai de notification < 1h » est tenu pour l'in-app (création immédiate).
+
+Déclencheurs automatiques :
+- **CU-SYS-01** — `AppelService` : à la saisie d'un appel, chaque élève `ABSENT`, `RETARD` ou
+  `SORTIE_ANTICIPEE` déclenche une notification (avec l'heure d'arrivée/sortie si saisie). À
+  la correction, seulement si le statut change (pas de doublon pour une simple correction
+  d'heure). Repasser un élève en `PRESENT` n'envoie pas de rectificatif.
+- `PaiementService` : notification `PAIEMENT_ENREGISTRE` (montant + numéro de reçu) et
+  `PAIEMENT_ANNULE` (avec le motif).
+- **CU-SYS-03** — `RelanceImpayesJob` : chaque jour ouvré à 8h (fuseau `Africa/Douala`), pour
+  chaque établissement `ACTIF`, relance les parents des élèves ayant un **montant échu**
+  impayé (`PaiementService.listImpayesEchus` : seuls les frais dont la date d'échéance est
+  passée comptent, contrairement à `/impayes` qui prend tout le solde de l'année). Un élève
+  n'est relancé qu'une fois tous les 7 jours. Configurable :
+  `schoolconnect.relance-impayes.enabled`, `.cron`, `.intervalle-jours`,
+  `schoolconnect.fuseau-horaire`.
+
+Endpoints :
+- `GET /api/v1/mes-notifications?nonLues=&page=&taille=` (CU-PAR-13) — les plus récentes
+  d'abord, avec le nombre total de non lues ; `GET /mes-notifications/non-lues/nombre`
+  (badge) ; `PATCH /mes-notifications/{id}/lue` ; `PATCH /mes-notifications/lues` (tout lire).
+  Chaque utilisateur ne voit que ses propres notifications.
+- `POST /api/v1/etablissements/{etabId}/eleves/{eleveId}/notifications` (CU-SUR-07) — message
+  libre aux parents d'un élève ; `SURVEILLANT`, `SECRETARIAT`, `DIRECTION`, `SUPER_ADMIN`.
+  409 si l'élève n'a aucun parent lié validé.
+- `POST /api/v1/etablissements/{etabId}/impayes/relances` (CU-ECO-06) — relance manuelle,
+  corps optionnel `{"eleveIds": [...]}` pour cibler des élèves ; pas de délai anti-doublon
+  (action explicite). `ECONOMAT`, `DIRECTION`, `SUPER_ADMIN`.
+
+Non couvert : préférences de notification par parent (CU-PAR-16 — choix des types/canaux),
+notifications de notes/bulletins (à ajouter avec le module bulletins), annonces et
+convocations à l'échelle d'une classe ou de l'établissement (CU-PAR-14), traduction des
+messages (fr uniquement, comme le reste de l'API).
+
