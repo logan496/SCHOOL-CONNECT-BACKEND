@@ -93,4 +93,22 @@ public final class EleveDtos {
             return new CodeLiaisonView(c.getId(), c.getEleveId(), c.getCode(), c.getLien(), c.getExpireLe());
         }
     }
+
+    /** Requête côté parent : se rattacher à un élève via un code de liaison. */
+    public record LierParCodeRequest(
+            @NotBlank @Size(max = 10) String code) {
+    }
+
+    /** Vue d'un enfant lié au parent connecté. */
+    public record EnfantView(
+            UUID parentEleveId,
+            UUID eleveId,
+            String nomEleve,
+            String prenomEleve,
+            LienParente lien,
+            boolean peutConsulter,
+            boolean peutPayer,
+            boolean peutJustifier,
+            StatutParentEleve statut) {
+    }
 }
