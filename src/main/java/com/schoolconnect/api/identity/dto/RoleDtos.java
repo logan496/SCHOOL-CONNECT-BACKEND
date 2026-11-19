@@ -43,4 +43,15 @@ public final class RoleDtos {
             String prenom,
             List<RoleUtilisateurView> roles) {
     }
+
+    /** Vue compacte d'un utilisateur pour les listes filtrées par rôle/établissement. */
+    public record UtilisateurSummary(
+            UUID utilisateurId,
+            String nom,
+            String prenom,
+            String telephone,
+            String email,
+            RoleType role,
+            UUID etablissementId) {
+    }
 }

@@ -13,4 +13,10 @@ public interface RoleUtilisateurRepository extends JpaRepository<RoleUtilisateur
     boolean existsByRole(RoleType role);
 
     boolean existsByUtilisateurIdAndEtablissementIdAndRoleAndActifTrue(UUID utilisateurId, UUID etablissementId, RoleType role);
+
+    List<RoleUtilisateur> findByEtablissementIdAndActifTrue(UUID etablissementId);
+
+    List<RoleUtilisateur> findByRoleAndActifTrue(RoleType role);
+
+    List<RoleUtilisateur> findByEtablissementIdAndRoleAndActifTrue(UUID etablissementId, RoleType role);
 }
